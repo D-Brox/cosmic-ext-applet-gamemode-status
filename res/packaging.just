@@ -16,11 +16,6 @@ metainfo-src := 'res' / metainfo
 metainfo-path := 'share' / 'metainfo' / metainfo
 metainfo-dst := base-dir / metainfo-path
 
-icons := APPID + '.svg'
-icons-src := 'res' / 'icons' / 'hicolor' / 'scalable' / 'apps' / icons
-icons-path := 'share' / 'icons' / 'hicolor' / 'scalable' / 'apps' / icons
-icons-dst := base-dir / icons-path
-
 # Compiles with debug profile
 build-debug *args:
     cargo build {{args}}
@@ -34,14 +29,12 @@ install:
     install -Dm0755 {{bin-src}} {{bin-dst}}
     install -Dm0644 {{desktop-src}} {{desktop-dst}}
     install -Dm0644 {{metainfo-src}} {{metainfo-dst}}
-    install -Dm0644 "{{icons-src}}" "{{icons-dst}}"
 
 # Uninstalls globally installed files
 uninstall:
     rm {{bin-dst}}
     rm {{desktop-dst}}
     rm {{metainfo-dst}}
-    rm "{{icons-dst}}/scalable/apps/{{APPID}}.svg"
 
 
 # Installs files locally
@@ -50,14 +43,12 @@ install-local:
     install -Dm0755 {{bin-src}} ~/.local/bin/{{name}}
     install -Dm0644 {{desktop-src}} ${XDG_DATA_HOME:-~/.local/share}/{{desktop-path}}
     install -Dm0644 {{metainfo-src}} ${XDG_DATA_HOME:-~/.local/share}/{{metainfo-path}}
-    install -Dm0644 {{icons-src}} ${XDG_DATA_HOME:-~/.local/share}/{{icons-dst}}
 
 # Uninstalls locally installed files
 uninstall-local:
     rm ~/.local/bin/{{name}}
     rm ${XDG_DATA_HOME:-~/.local/share}/{{desktop-path}}
     rm ${XDG_DATA_HOME:-~/.local/share}/{{metainfo-path}}
-    rm ${XDG_DATA_HOME:-~/.local/share}/{{icons-dst}}
 
 # Compiles and packages deb with release profile
 build-deb:
