@@ -26,17 +26,17 @@ use zbus::proxy;
     default_path = "/com/feralinteractive/GameMode"
 )]
 pub trait GameMode {
-    /// ListGames method
+    /// `ListGames` method
     fn list_games(&self) -> zbus::Result<Vec<(i32, zbus::zvariant::OwnedObjectPath)>>;
 
-    /// QueryStatus method
+    /// `QueryStatus` method
     fn query_status(&self, pid: i32) -> zbus::Result<i32>;
 
-    /// QueryStatusByPID method
+    /// `QueryStatusByPID` method
     #[zbus(name = "QueryStatusByPID")]
     fn query_status_by_pid(&self, game_pid: i32, caller_pic: i32) -> zbus::Result<i32>;
 
-    /// QueryStatusByPIDFd method
+    /// `QueryStatusByPIDFd` method
     #[zbus(name = "QueryStatusByPIDFd")]
     fn query_status_by_pidfd(
         &self,
@@ -44,17 +44,17 @@ pub trait GameMode {
         caller_fd: zbus::zvariant::Fd<'_>,
     ) -> zbus::Result<i32>;
 
-    /// RefreshConfig method
+    /// `RefreshConfig` method
     fn refresh_config(&self) -> zbus::Result<i32>;
 
-    /// RegisterGame method
+    /// `RegisterGame` method
     fn register_game(&self, pid: i32) -> zbus::Result<i32>;
 
-    /// RegisterGameByPID method
+    /// `RegisterGameByPID` method
     #[zbus(name = "RegisterGameByPID")]
     fn register_game_by_pid(&self, game_pid: i32, caller_pid: i32) -> zbus::Result<i32>;
 
-    /// RegisterGameByPIDFd method
+    /// `RegisterGameByPIDFd` method
     #[zbus(name = "RegisterGameByPIDFd")]
     fn register_game_by_pidfd(
         &self,
@@ -62,14 +62,14 @@ pub trait GameMode {
         caller_fd: zbus::zvariant::Fd<'_>,
     ) -> zbus::Result<i32>;
 
-    /// UnregisterGame method
+    /// `UnregisterGame` method
     fn unregister_game(&self, pid: i32) -> zbus::Result<i32>;
 
-    /// UnregisterGameByPID method
+    /// `UnregisterGameByPID` method
     #[zbus(name = "UnregisterGameByPID")]
     fn unregister_game_by_pid(&self, game_pid: i32, caller_pid: i32) -> zbus::Result<i32>;
 
-    /// UnregisterGameByPIDFd method
+    /// `UnregisterGameByPIDFd` method
     #[zbus(name = "UnregisterGameByPIDFd")]
     fn unregister_game_by_pidfd(
         &self,
@@ -77,16 +77,16 @@ pub trait GameMode {
         caller_fd: zbus::zvariant::Fd<'_>,
     ) -> zbus::Result<i32>;
 
-    /// GameRegistered signal
+    /// `GameRegistered` signal
     #[zbus(signal)]
     fn game_registered(&self, pid: i32, path: zbus::zvariant::ObjectPath<'_>) -> zbus::Result<()>;
 
-    /// GameUnregistered signal
+    /// `GameUnregistered` signal
     #[zbus(signal)]
     fn game_unregistered(&self, pid: i32, path: zbus::zvariant::ObjectPath<'_>)
-        -> zbus::Result<()>;
+    -> zbus::Result<()>;
 
-    /// ClientCount property
+    /// `ClientCount` property
     #[zbus(property)]
     fn client_count(&self) -> zbus::Result<i32>;
 }

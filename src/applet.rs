@@ -1,20 +1,23 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 use std::collections::HashMap;
+use std::ffi::OsStr;
+use std::path::Path;
 
 use cosmic::app::{Core, Task};
 use cosmic::cosmic_theme::Layer;
 use cosmic::iced::platform_specific::shell::wayland::commands::popup::{destroy_popup, get_popup};
 use cosmic::iced::window::Id;
-use cosmic::iced::{stream, Alignment, Length, Subscription};
-//use cosmic::iced_style::application;
-use cosmic::widget::{layer_container, Column, Grid, JustifyContent, Text};
+use cosmic::iced::{Alignment, Length, Subscription, stream};
+use cosmic::widget::{Column, Grid, JustifyContent, Text, layer_container};
 use cosmic::{Application, Element};
 
 use crate::dbus::GameModeProxy;
-use futures_util::stream::StreamExt;
 use futures_util::SinkExt;
-use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, RefreshKind, System, UpdateKind};
+use futures_util::stream::StreamExt;
+use sysinfo::{
+    Pid, Process, ProcessRefreshKind, ProcessesToUpdate, RefreshKind, System, UpdateKind,
+};
 use zbus::Connection;
 
 use crate::fl;
@@ -23,7 +26,7 @@ use crate::fl;
 pub struct GameModeStatus {
     core: Core,
     sys: System,
-    games: HashMap<i32, String>,
+    games: HashMap<usize, String>,
     popup: Option<Id>,
 }
 
@@ -31,9 +34,9 @@ pub struct GameModeStatus {
 pub enum Message {
     TogglePopup,
     PopupClosed(Id),
-    GameListAdd(i32),
-    GameListRemove(i32),
-    GameListSet(Vec<i32>),
+    GameListAdd(usize),
+    GameListRemove(usize),
+    GameListSet(Vec<usize>),
 }
 
 impl Application for GameModeStatus {
@@ -71,11 +74,11 @@ impl Application for GameModeStatus {
         Some(Message::PopupClosed(id))
     }
 
-    fn view(&self) -> Element<Self::Message> {
+    fn view(&self) -> Element<'_, Self::Message> {
         self.core
             .applet
             .icon_button(if self.games.is_empty() {
-                "computer-symbolic"
+                "display-symbolic"
             } else {
                 "applications-games-symbolic"
             })
@@ -83,7 +86,7 @@ impl Application for GameModeStatus {
             .into()
     }
 
-    fn view_window(&self, _id: Id) -> Element<Self::Message> {
+    fn view_window(&self, _id: Id) -> Element<'_, Self::Message> {
         self.core
             .applet
             .popup_container(
@@ -138,17 +141,18 @@ impl Application for GameModeStatus {
                 }
             }
             Message::GameListAdd(pid) => {
-                let p = Pid::from(pid as usize);
-                self.sys.refresh_processes(ProcessesToUpdate::Some(&[p]),true);
-                if let Some(process) = self.sys.process(p) {
-                    if let Some(exe_path) = process.exe() {
-                        if let Some(exe_name) = exe_path.file_name() {
-                            if let Some(exe_str) = exe_name.to_str() {
-                                let exe = exe_str.to_string();
-                                self.games.insert(pid, exe);
-                            }
-                        }
-                    }
+                let p = Pid::from(pid);
+                self.sys
+                    .refresh_processes(ProcessesToUpdate::Some(&[p]), true);
+                if let Some(exe_str) = self
+                    .sys
+                    .process(p)
+                    .and_then(Process::exe)
+                    .and_then(Path::file_name)
+                    .and_then(OsStr::to_str)
+                {
+                    let exe = exe_str.to_string();
+                    self.games.insert(pid, exe);
                 }
             }
             Message::GameListRemove(pid) => {
@@ -156,22 +160,22 @@ impl Application for GameModeStatus {
             }
             Message::GameListSet(list) => {
                 self.games = HashMap::new();
-                self.sys.refresh_processes(ProcessesToUpdate::Some(
-                    &list
-                        .iter()
-                        .map(|pid| Pid::from(*pid as usize))
-                        .collect::<Vec<_>>(),
-                ),true);
+                self.sys.refresh_processes(
+                    ProcessesToUpdate::Some(
+                        &list.iter().map(|pid| Pid::from(*pid)).collect::<Vec<_>>(),
+                    ),
+                    true,
+                );
                 for pid in &list {
-                    if let Some(process) = self.sys.process(Pid::from(*pid as usize)) {
-                        if let Some(exe_path) = process.exe() {
-                            if let Some(exe_name) = exe_path.file_name() {
-                                if let Some(exe_str) = exe_name.to_str() {
-                                    let exe = exe_str.to_string();
-                                    self.games.insert(*pid, exe);
-                                }
-                            }
-                        }
+                    if let Some(exe_str) = self
+                        .sys
+                        .process(Pid::from(*pid))
+                        .and_then(Process::exe)
+                        .and_then(Path::file_name)
+                        .and_then(OsStr::to_str)
+                    {
+                        let exe = exe_str.to_string();
+                        self.games.insert(*pid, exe);
                     }
                 }
             }
@@ -180,13 +184,11 @@ impl Application for GameModeStatus {
     }
 
     fn subscription(&self) -> cosmic::iced::Subscription<Self::Message> {
-        struct RecieveRegister;
-        let registered = Subscription::run_with_id(
-            std::any::TypeId::of::<RecieveRegister>(),
-            stream::channel(100, move |mut output| async move {
+        let registered = Subscription::run(move || {
+            stream::channel(100, async |mut output| {
                 let conn = Connection::session()
                     .await
-                    .expect("Failled to start dbus session");
+                    .expect("Failed to start dbus session");
                 let proxy = GameModeProxy::new(&conn)
                     .await
                     .expect("Failed to get proxy");
@@ -195,20 +197,19 @@ impl Application for GameModeStatus {
                     .await
                     .expect("Failed to get GameRegistered signal");
 
+                #[allow(clippy::cast_sign_loss)]
                 while let Some(msg) = registered.next().await {
                     let args = msg.args().expect("failed to get args");
-                    _ = output.send(Message::GameListAdd(args.pid)).await;
+                    _ = output.send(Message::GameListAdd(args.pid as usize)).await;
                 }
                 panic!("Stream ended unexpectedly");
-            }),
-        );
-        struct RecieveUnregister;
-        let unregistered = Subscription::run_with_id(
-            std::any::TypeId::of::<RecieveUnregister>(),
-            stream::channel(100, move |mut output| async move {
+            })
+        });
+        let unregistered = Subscription::run(move || {
+            stream::channel(100, async |mut output| {
                 let conn = Connection::session()
                     .await
-                    .expect("Failled to start dbus session");
+                    .expect("Failed to start dbus session");
                 let proxy = GameModeProxy::new(&conn)
                     .await
                     .expect("Failed to get proxy");
@@ -217,24 +218,27 @@ impl Application for GameModeStatus {
                     .await
                     .expect("Failed to get GameRegistered signal");
 
+                #[allow(clippy::cast_sign_loss)]
                 while let Some(msg) = unregistered.next().await {
                     let args = msg.args().expect("failed to get args");
-                    _ = output.send(Message::GameListRemove(args.pid)).await;
+                    _ = output
+                        .send(Message::GameListRemove(args.pid as usize))
+                        .await;
                 }
                 panic!("Stream ended unexpectedly");
-            }),
-        );
+            })
+        });
 
         Subscription::batch(vec![registered, unregistered])
     }
 
-    fn style(&self) -> Option<cosmic::iced_runtime::Appearance> {
+    fn style(&self) -> Option<cosmic::iced::theme::Style> {
         Some(cosmic::applet::style())
     }
 }
 
 impl GameModeStatus {
-    fn game_grid(&self) -> Element<Message> {
+    fn game_grid(&self) -> Element<'_, Message> {
         let mut grid = Grid::<Message>::new()
             .push(Text::new("PID"))
             .push(Text::new(fl!("name")));
@@ -242,7 +246,7 @@ impl GameModeStatus {
         for (pid, name) in &self.games {
             grid = grid
                 .insert_row()
-                .push(Text::new(format!("{}", pid)))
+                .push(Text::new(pid.to_string()))
                 .push(Text::new(name));
         }
 
@@ -257,6 +261,7 @@ impl GameModeStatus {
 
     fn init_game_list() -> Task<Message> {
         Task::perform(
+            #[allow(clippy::cast_sign_loss)]
             async {
                 let conn = Connection::session()
                     .await
@@ -265,9 +270,9 @@ impl GameModeStatus {
                     .await
                     .expect("Failed to get proxy");
                 let list = proxy.list_games().await.expect("Failed to get list");
-                list.iter().map(|g| g.0).collect::<Vec<_>>()
+                list.iter().map(|g| g.0 as usize).collect::<Vec<_>>()
             },
-            |res| cosmic::app::Message::App(Message::GameListSet(res)),
+            |res| cosmic::Action::App(Message::GameListSet(res)),
         )
     }
 }
